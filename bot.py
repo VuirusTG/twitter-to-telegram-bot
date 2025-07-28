@@ -2,11 +2,12 @@ import os
 import asyncio
 import logging
 import tweepy
+from aiohttp import web
 from aiogram import Bot
 from aiogram.types import InputMediaPhoto
-from dotenv import load_dotenv
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from dotenv import load_dotenv
 
 # Загрузка переменных окружения из .env
 load_dotenv()
@@ -74,8 +75,24 @@ async def check_twitter_updates():
             logging.error(f"Ошибка при получении твитов: {e}")
             await asyncio.sleep(60)
 
+# Простой веб-сервер для Render Web Service
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_app():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
+
+# Главная асинхронная функция
 async def main():
-    await check_twitter_updates()
+    await asyncio.gather(
+        start_web_app(),         # Запускаем веб-сервер
+        check_twitter_updates()  # Запускаем основную логику бота
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
