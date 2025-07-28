@@ -70,10 +70,10 @@ async def check_twitter_updates():
                         last_tweet_ids[username] = tweet.id
                         await notify_user_about_tweet(tweet)
 
-            await asyncio.sleep(600)  # Проверять каждые 60 секунд
+            await asyncio.sleep(1000)  # Проверять каждые 60 секунд
         except Exception as e:
             logging.error(f"Ошибка при получении твитов: {e}")
-            await asyncio.sleep(600)
+            await asyncio.sleep(1000)
 
 # Простой веб-сервер для Render Web Service
 async def handle(request):
