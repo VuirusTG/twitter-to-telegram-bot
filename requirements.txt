@@ -1,3 +1,4 @@
 tweepy
 aiogram
 python-dotenv
+aiohttp
