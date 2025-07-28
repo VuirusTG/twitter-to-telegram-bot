@@ -49,6 +49,15 @@ async def notify_user_about_tweet(tweet):
         await bot.send_media_group(TELEGRAM_USER_ID, media_group)
     await bot.send_message(TELEGRAM_USER_ID, text)
 
+async def notify_startup():
+    accounts = "\n".join(f"— {user.strip()}" for user in TWITTER_USERS)
+    text = (
+        "✅ <b>Бот успешно запущен</b>\n"
+        "🔎 <b>Мониторинг аккаунтов:</b>\n"
+        f"{accounts}"
+    )
+    await bot.send_message(TELEGRAM_USER_ID, text)
+    
 async def check_twitter_updates():
     while True:
         try:
