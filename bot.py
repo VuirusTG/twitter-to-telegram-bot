@@ -5,6 +5,8 @@ import tweepy
 from aiogram import Bot
 from aiogram.types import InputMediaPhoto
 from dotenv import load_dotenv
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 # Загрузка переменных окружения из .env
 load_dotenv()
@@ -16,7 +18,10 @@ TWITTER_BEARER = os.getenv("TWITTER_BEARER")
 TWITTER_USERS = os.getenv("TWITTER_USERS").split(",")
 
 # Настройка Telegram-бота
-bot = Bot(token=TELEGRAM_BOT_TOKEN, parse_mode="HTML")
+bot = Bot(
+    token=TELEGRAM_BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
