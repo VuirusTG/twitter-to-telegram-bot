@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import tweepy
+from aiohttp import web
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto
@@ -109,8 +110,21 @@ async def on_startup():
     text = f"✅ Бот успешно запущен и отслеживает аккаунты:\n\n{accounts}"
     await bot.send_message(chat_id=TELEGRAM_USER_ID, text=text)
 
+# 👇 Добавлено: фейковый веб-сервер, чтобы Render не падал
+async def handle_root(request):
+    return web.Response(text="Twitter bot is running.")
+
+async def start_fake_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_root)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 3000)))
+    await site.start()
+
 async def main():
     await on_startup()
+    await start_fake_web_server()  # запускаем сервер
     await run_forever()
 
 if __name__ == "__main__":
