@@ -2,11 +2,10 @@ import os
 import asyncio
 import logging
 import tweepy
-from aiohttp import web
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения из .env
@@ -33,75 +32,86 @@ twitter_client = tweepy.Client(bearer_token=TWITTER_BEARER)
 # Последние ID твитов, чтобы не дублировать
 last_tweet_ids = {}
 
-async def notify_user_about_tweet(tweet):
+async def notify_user_about_tweet(tweet, media=[]):
     text = tweet.text
+    tweet_url = f"https://twitter.com/i/web/status/{tweet.id}"
+    caption = f"<b>Новый твит от @{tweet.author_id}</b>\n\n{text}\n\n<a href=\"{tweet_url}\">Открыть в Twitter</a>"
 
-    media_group = []
-    if hasattr(tweet, "attachments") and "media_keys" in tweet.attachments:
-        media_keys = tweet.attachments["media_keys"]
-        media = tweet.includes.get("media", [])
+    try:
+        if media:
+            media_group = []
+            for i, item in enumerate(media):
+                input_media = InputMediaPhoto(media=item["url"])
+                if i == 0:
+                    input_media.caption = caption
+                    input_media.parse_mode = ParseMode.HTML
+                media_group.append(input_media)
+            await bot.send_media_group(TELEGRAM_USER_ID, media_group)
+        else:
+            await bot.send_message(TELEGRAM_USER_ID, caption)
+    except Exception as e:
+        logging.error(f"Ошибка при отправке сообщения: {e}")
 
-        for item in media:
-            if item.media_key in media_keys and item.type == "photo":
-                media_group.append(InputMediaPhoto(item.url))
+async def check_twitter_once():
+    for username in TWITTER_USERS:
+        try:
+            user = twitter_client.get_user(username=username.strip())
+            user_id = user.data.id
 
-    if media_group:
-        await bot.send_media_group(TELEGRAM_USER_ID, media_group)
-    await bot.send_message(TELEGRAM_USER_ID, text)
+            tweets = twitter_client.get_users_tweets(
+                id=user_id,
+                max_results=5,
+                expansions="attachments.media_keys,author_id",
+                media_fields="url,type"
+            )
 
-async def notify_startup():
-    accounts = "\n".join(f"— {user.strip()}" for user in TWITTER_USERS)
-    text = (
-        "✅ <b>Бот успешно запущен</b>\n"
-        "🔎 <b>Мониторинг аккаунтов:</b>\n"
-        f"{accounts}"
-    )
-    await bot.send_message(TELEGRAM_USER_ID, text)
-    
-async def check_twitter_updates():
+            if tweets.data:
+                includes = tweets.includes if tweets.includes else {}
+                media_items = includes.get("media", [])
+
+                for tweet in reversed(tweets.data):
+                    if last_tweet_ids.get(username) == tweet.id:
+                        continue
+                    last_tweet_ids[username] = tweet.id
+
+                    photos = []
+                    if hasattr(tweet, "attachments") and "media_keys" in tweet.attachments:
+                        media_keys = tweet.attachments["media_keys"]
+                        for m in media_items:
+                            if m.media_key in media_keys and m.type == "photo":
+                                photos.append({"url": m.url})
+
+                    await notify_user_about_tweet(tweet, photos)
+
+        except tweepy.TooManyRequests:
+            msg = f"⚠️ Превышен лимит API для @{username.strip()}. Пауза 1 час."
+            logging.error(msg)
+            await bot.send_message(TELEGRAM_USER_ID, msg)
+            await asyncio.sleep(3600)
+        except Exception as e:
+            msg = f"❌ Ошибка при проверке @{username.strip()}:\n{e}"
+            logging.error(msg)
+            await bot.send_message(TELEGRAM_USER_ID, msg)
+
+async def run_forever():
     while True:
         try:
-            for username in TWITTER_USERS:
-                user = twitter_client.get_user(username=username.strip())
-                user_id = user.data.id
-
-                tweets = twitter_client.get_users_tweets(
-                    id=user_id,
-                    max_results=5,
-                    expansions="attachments.media_keys",
-                    media_fields="url,type"
-                )
-
-                if tweets.data:
-                    for tweet in reversed(tweets.data):
-                        if last_tweet_ids.get(username) == tweet.id:
-                            continue
-                        last_tweet_ids[username] = tweet.id
-                        await notify_user_about_tweet(tweet)
-
-            await asyncio.sleep(1000)  # Проверять каждые 60 секунд
+            await check_twitter_once()
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            logging.error(f"Ошибка при получении твитов: {e}")
-            await asyncio.sleep(1000)
+            logging.exception("Произошла непредвиденная ошибка в основном цикле.")
+            await bot.send_message(TELEGRAM_USER_ID, f"🔥 Непредвиденная ошибка:\n{e}")
+        await asyncio.sleep(20 * 60)  # 20 минут
 
-# Простой веб-сервер для Render Web Service
-async def handle(request):
-    return web.Response(text="Bot is running!")
+async def on_startup():
+    accounts = "\n".join(f"🔹 {u.strip()}" for u in TWITTER_USERS if u.strip())
+    text = f"✅ Бот успешно запущен и отслеживает аккаунты:\n\n{accounts}"
+    await bot.send_message(chat_id=TELEGRAM_USER_ID, text=text)
 
-async def start_web_app():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 10000)
-    await site.start()
-
-# Главная асинхронная функция
 async def main():
-    await asyncio.gather(
-        start_web_app(),         # Запускаем веб-сервер
-        check_twitter_updates()  # Запускаем основную логику бота
-    )
+    await on_startup()
+    await run_forever()
 
 if __name__ == "__main__":
     asyncio.run(main())
